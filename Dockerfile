@@ -11,6 +11,10 @@ RUN apt update -y && apt upgrade -y && rm -rf /var/lib/apt/lists/*
 # Add a user named docker
 RUN useradd -m docker
 
+# The container starts as root (see ENTRYPOINT) but jobs run as the docker
+# user — point HOME at their real home so git/node resolve ~/.gitconfig etc.
+ENV HOME=/home/docker
+
 # Install necessary packages, GitHub CLI, and Docker CLI
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl gnupg \
@@ -26,9 +30,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-dev python3-pip python3-venv ssh sudo \
     && rm -rf /var/lib/apt/lists/*
 
-# Add docker user to docker group and allow GID fix at startup
+# Add docker user to docker group and allow sudo in CI jobs
 RUN usermod -aG docker docker \
-    && echo "docker ALL=(root) NOPASSWD: /usr/sbin/groupmod" >> /etc/sudoers
+    && echo "docker ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
 # Set up the actions runner for the target architecture
 RUN cd /home/docker && mkdir actions-runner && cd actions-runner \
@@ -46,8 +50,6 @@ RUN chown -R docker /home/docker && /home/docker/actions-runner/bin/installdepen
 # Copy the start script and make it executable
 COPY --chmod=+x start.sh /start.sh
 
-# Switch to docker user
-USER docker
-
-# Define the entrypoint
+# Define the entrypoint — starts as root so it can fix the docker group GID,
+# then drops to the docker user (see start.sh)
 ENTRYPOINT ["/start.sh"]

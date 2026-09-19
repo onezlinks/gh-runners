@@ -48,6 +48,38 @@ Containers are named `gh-runners-<service>-<n>`. Docker Compose automatically
 picks up `docker-compose.override.yml` too — a handy gitignored spot for local
 services.
 
+## Running Docker jobs (DooD gotcha)
+
+Jobs drive the **host** Docker daemon through the mounted socket, so every
+bind-mount path in a job (`docker run -v "$PWD/..."`, compose volumes, …) is
+resolved against the **host** filesystem. A checkout path that only exists
+inside the runner container silently becomes an empty directory on the host —
+the classic `IO error: Is a directory` symptom.
+
+The fix is to give each runner its own work directory bind-mounted at an
+**identical path on host and container**:
+
+```yaml
+services:
+  runner-1:
+    <<: *runner
+    environment:
+      WORK_DIR: /opt/gh-runners/work-1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/gh-runners/work-1:/opt/gh-runners/work-1   # same path both sides
+```
+
+Create the dirs first so the `docker` user (uid 1001) can write them:
+
+```bash
+install -d -o 1001 -g "$(stat -c %g /var/run/docker.sock)" /opt/gh-runners/work-1
+```
+
+Each runner needs its **own** work dir (two jobs for the same repo would
+otherwise share a checkout), which is why this setup uses one service per
+runner instead of `replicas:`.
+
 ## Configuration
 
 | Variable              | Required | Description |

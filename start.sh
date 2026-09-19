@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# Started as root: align the container's docker group with the host socket GID,
+# then re-exec as the docker user so the whole runner tree inherits it.
+if [ "$(id -u)" = "0" ]; then
+    if [ -S /var/run/docker.sock ]; then
+        groupmod -g "$(stat -c '%g' /var/run/docker.sock)" docker 2>/dev/null || true
+    fi
+    exec setpriv --reuid=docker --regid=docker --init-groups "$0" "$@"
+fi
+
 : "${REPO:?REPO env var required (format: owner/repo or owner for org runners)}"
 
 cd /home/docker/actions-runner || exit
@@ -28,11 +37,6 @@ fi
 # Unique runner name per container so replicas don't collide on GitHub
 NAME="${NAME:-$(basename "${REPO}")}"
 RUNNER_NAME="${NAME}-$(hostname)"
-
-if [ -S /var/run/docker.sock ]; then
-    DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
-    sudo groupmod -g "$DOCKER_GID" docker 2>/dev/null || true
-fi
 
 CONFIG_ARGS="--url https://github.com/${REPO} --token ${REG_TOKEN} --name ${RUNNER_NAME} --unattended --replace"
 
