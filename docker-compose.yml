@@ -1,0 +1,45 @@
+name: gh-runners
+
+x-runner: &runner
+  build: .
+  # Or use a published image instead of building locally:
+  # image: ghcr.io/<owner>/<repo>:latest
+  restart: always
+  env_file:
+    - path: .env
+      required: false
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+  healthcheck:
+    test: ["CMD", "pgrep", "-f", "run.sh"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 40s
+
+services:
+  runner:
+    <<: *runner
+    deploy:
+      mode: replicated
+      replicas: 2
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.4'
+          memory: 256M
+
+  # ── Multi-project: one service per repo/org, each with its own env file ──
+  # my-project:
+  #   <<: *runner
+  #   env_file: env/my-project.env
+  #   deploy:
+  #     mode: replicated
+  #     replicas: 1
